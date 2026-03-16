@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TCGPulse — Real-Time TCG Market Intelligence</title>
+  <style>
+    /* ── Reset & Root ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --void:      #04020c;
+      --deep:      #07041a;
+      --card:      #0c0920;
+      --panel:     #110e26;
+      --gold:      #d97706;
+      --gold-lt:   #f59e0b;
+      --gold-br:   #fbbf24;
+      --purple:    #7c3aed;
+      --purple-lt: #a855f7;
+      --purple-dim:#2d1f5e;
+      --cyan:      #00e5ff;
+      --slate:     #94a3b8;
+      --white:     #f1f5f9;
+      --border:    #1e1640;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--void);
+      color: var(--white);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--purple-dim); border-radius: 4px; }
+
+    /* ── Animations ────────────────────────────────────────────────────── */
+    @keyframes fadeUp   { from { opacity:0; transform:translateY(32px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes shimmer  { 0%{background-position:-600px 0} 100%{background-position:600px 0} }
+    @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @keyframes spin     { to { transform: rotate(360deg); } }
+    @keyframes floatUp  { 0%{transform:translateY(0) scale(1);opacity:.7} 100%{transform:translateY(-100vh) scale(.3);opacity:0} }
+    @keyframes glow     { 0%,100%{box-shadow:0 0 20px #7c3aed44,0 0 60px #7c3aed22} 50%{box-shadow:0 0 40px #7c3aed88,0 0 120px #7c3aed44} }
+    @keyframes borderPulse { 0%,100%{border-color:#2d1f5e} 50%{border-color:#7c3aed} }
+    @keyframes countDown { from{opacity:0;transform:scale(.85)} to{opacity:1;transform:scale(1)} }
+    @keyframes lineGrow  { from{width:0} to{width:100%} }
+    @keyframes hueShift  { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(360deg)} }
+
+    .fade-up  { animation: fadeUp .7s cubic-bezier(.22,1,.36,1) both; }
+    .fade-up-2{ animation: fadeUp .7s .15s cubic-bezier(.22,1,.36,1) both; }
+    .fade-up-3{ animation: fadeUp .7s .30s cubic-bezier(.22,1,.36,1) both; }
+    .fade-up-4{ animation: fadeUp .7s .45s cubic-bezier(.22,1,.36,1) both; }
+    .fade-up-5{ animation: fadeUp .7s .60s cubic-bezier(.22,1,.36,1) both; }
+    .pulse    { animation: pulse 2s ease-in-out infinite; }
+
+    /* ── Particle Canvas ───────────────────────────────────────────────── */
+    #stars {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    }
+
+    /* ── Global layout ─────────────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+    /* ── NAV ───────────────────────────────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: linear-gradient(180deg, rgba(4,2,12,.95) 0%, transparent 100%);
+      backdrop-filter: blur(8px);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 20px; font-weight: 900; letter-spacing: -.5px;
+    }
+    .nav-logo-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--purple), var(--gold));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .nav-logo span.pulse-word { color: var(--gold-br); }
+    .nav-logo span.tcg-word   { color: var(--white); }
+    .nav-badge {
+      font-size: 10px; font-weight: 700; color: var(--gold-br);
+      background: #1c0e0288; border: 1px solid #d9770644;
+      border-radius: 4px; padding: 3px 8px; letter-spacing: .08em;
+    }
+
+    /* ── HERO ──────────────────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative;
+    }
+    /* Radial glow behind hero */
+    .hero::before {
+      content: '';
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -55%);
+      width: 800px; height: 600px;
+      background: radial-gradient(ellipse, #7c3aed18 0%, #d9770608 40%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--gold-lt); background: #1c0e0255;
+      border: 1px solid #d9770644; border-radius: 999px;
+      padding: 6px 16px; margin-bottom: 28px;
+    }
+    .hero-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold-lt); animation: pulse 1.5s ease-in-out infinite; }
+    .hero-title {
+      font-size: clamp(42px, 8vw, 88px);
+      font-weight: 900; line-height: 1.0; letter-spacing: -2px;
+      margin-bottom: 12px;
+    }
+    .hero-title .line1 { display: block; color: var(--white); }
+    .hero-title .line2 {
+      display: block;
+      background: linear-gradient(90deg, var(--gold) 0%, var(--gold-br) 50%, var(--purple-lt) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: clamp(15px, 2.5vw, 20px);
+      color: var(--slate); max-width: 580px; line-height: 1.65;
+      margin: 20px auto 48px;
+    }
+    .hero-sub strong { color: var(--white); font-weight: 600; }
+
+    /* Countdown */
+    .countdown-wrap {
+      display: flex; gap: 12px; justify-content: center;
+      margin-bottom: 52px; flex-wrap: wrap;
+    }
+    .countdown-unit {
+      display: flex; flex-direction: column; align-items: center;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px 20px; min-width: 80px;
+      animation: glow 3s ease-in-out infinite;
+    }
+    .countdown-unit:nth-child(2) { animation-delay: .75s; }
+    .countdown-unit:nth-child(3) { animation-delay: 1.5s; }
+    .countdown-unit:nth-child(4) { animation-delay: 2.25s; }
+    .countdown-num {
+      font-size: 36px; font-weight: 900; color: var(--white);
+      font-variant-numeric: tabular-nums; line-height: 1;
+      animation: countDown .3s ease both;
+    }
+    .countdown-lbl {
+      font-size: 9px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--slate); margin-top: 6px;
+    }
+    .countdown-sep {
+      font-size: 28px; font-weight: 900; color: var(--purple-dim);
+      align-self: center; padding-bottom: 8px;
+    }
+
+    /* Email form */
+    .signup-form {
+      display: flex; gap: 0; max-width: 480px; width: 100%;
+      margin: 0 auto; position: relative;
+    }
+    .signup-input {
+      flex: 1; padding: 16px 20px; font-size: 15px;
+      background: var(--card); color: var(--white);
+      border: 1px solid var(--border); border-right: none;
+      border-radius: 12px 0 0 12px; outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .signup-input::placeholder { color: #475569; }
+    .signup-input:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px #7c3aed22;
+    }
+    .signup-btn {
+      padding: 16px 28px; font-size: 14px; font-weight: 800;
+      letter-spacing: .04em; cursor: pointer; border: none;
+      border-radius: 0 12px 12px 0;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--purple) 100%);
+      color: #fff; transition: opacity .2s, transform .1s;
+      white-space: nowrap;
+    }
+    .signup-btn:hover  { opacity: .9; }
+    .signup-btn:active { transform: scale(.98); }
+    .signup-note {
+      font-size: 11px; color: #475569; margin-top: 12px; text-align: center;
+    }
+    /* Success state */
+    .signup-success {
+      display: none; align-items: center; justify-content: center; gap: 8px;
+      padding: 14px 24px; border-radius: 12px;
+      background: #14532d33; border: 1px solid #16a34a66;
+      color: #22c55e; font-weight: 700; font-size: 14px;
+      max-width: 480px; width: 100%; margin: 0 auto;
+    }
+
+    /* Scroll indicator */
+    .scroll-hint {
+      position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      opacity: .5;
+    }
+    .scroll-hint span { font-size: 10px; letter-spacing: .1em; color: var(--slate); }
+    .scroll-arrow {
+      width: 20px; height: 20px; border-right: 2px solid var(--slate);
+      border-bottom: 2px solid var(--slate);
+      transform: rotate(45deg);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    /* ── SECTION SHARED ────────────────────────────────────────────────── */
+    section { padding: 80px 0; position: relative; z-index: 1; }
+    .section-eyebrow {
+      font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--gold-lt); margin-bottom: 12px; display: block;
+    }
+    .section-title {
+      font-size: clamp(28px, 5vw, 48px);
+      font-weight: 900; letter-spacing: -1px; margin-bottom: 16px;
+    }
+    .section-sub {
+      font-size: 16px; color: var(--slate); line-height: 1.7; max-width: 560px;
+    }
+    .divider {
+      height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin: 0 auto;
+    }
+
+    /* ── FEATURES STRIP ────────────────────────────────────────────────── */
+    .features-strip {
+      background: var(--deep);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .features-strip .container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+    }
+    .feature-item {
+      padding: 32px 28px; display: flex; flex-direction: column; gap: 8px;
+      border-right: 1px solid var(--border);
+    }
+    .feature-item:last-child { border-right: none; }
+    .feature-icon {
+      font-size: 26px; margin-bottom: 4px;
+    }
+    .feature-title { font-size: 15px; font-weight: 800; color: var(--white); }
+    .feature-desc  { font-size: 13px; color: var(--slate); line-height: 1.6; }
+
+    /* ── GAMES SECTION ─────────────────────────────────────────────────── */
+    .games-section { padding: 96px 0; }
+    .games-header { text-align: center; margin-bottom: 60px; }
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .game-card {
+      position: relative; overflow: hidden;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 20px; padding: 36px 28px;
+      transition: transform .25s, border-color .25s, box-shadow .25s;
+      cursor: default;
+    }
+    .game-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 24px 60px rgba(0,0,0,.6);
+    }
+    .game-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .game-card.op::before    { background: linear-gradient(90deg, #ef4444, #f97316); }
+    .game-card.db::before    { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .game-card.ua::before    { background: linear-gradient(90deg, #3b82f6, #a855f7); }
+    .game-card:hover.op      { border-color: #ef444455; box-shadow: 0 24px 60px #ef444422; }
+    .game-card:hover.db      { border-color: #f59e0b55; box-shadow: 0 24px 60px #f59e0b22; }
+    .game-card:hover.ua      { border-color: #3b82f655; box-shadow: 0 24px 60px #3b82f622; }
+    /* Glow orb */
+    .game-card .orb {
+      position: absolute; top: -40px; right: -40px;
+      width: 160px; height: 160px; border-radius: 50%;
+      opacity: .07; pointer-events: none;
+    }
+    .game-card.op .orb { background: radial-gradient(circle, #ef4444, transparent); }
+    .game-card.db .orb { background: radial-gradient(circle, #f59e0b, transparent); }
+    .game-card.ua .orb { background: radial-gradient(circle, #3b82f6, transparent); }
+
+    .game-logo-wrap {
+      width: 60px; height: 60px; border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 20px;
+    }
+    .game-card.op .game-logo-wrap { background: #ef444418; border: 1px solid #ef444433; }
+    .game-card.db .game-logo-wrap { background: #f59e0b18; border: 1px solid #f59e0b33; }
+    .game-card.ua .game-logo-wrap { background: #3b82f618; border: 1px solid #3b82f633; }
+
+    .game-name {
+      font-size: 20px; font-weight: 900; margin-bottom: 6px;
+    }
+    .game-card.op .game-name { color: #f97316; }
+    .game-card.db .game-name { color: #fbbf24; }
+    .game-card.ua .game-name { color: #60a5fa; }
+
+    .game-sub  { font-size: 12px; color: var(--slate); margin-bottom: 20px; font-weight: 600; letter-spacing: .04em; }
+    .game-desc { font-size: 14px; color: #64748b; line-height: 1.7; margin-bottom: 24px; }
+    .game-features { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .game-features li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--slate);
+    }
+    .game-features li::before {
+      content: ''; flex-shrink: 0;
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .game-card.op .game-features li::before { background: #ef4444; }
+    .game-card.db .game-features li::before { background: #f59e0b; }
+    .game-card.ua .game-features li::before { background: #3b82f6; }
+
+    .game-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 24px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+      padding: 5px 12px; border-radius: 999px;
+    }
+    .game-card.op .game-status { color: #f97316; background: #f9731618; border: 1px solid #f9731633; }
+    .game-card.db .game-status { color: #fbbf24; background: #fbbf2418; border: 1px solid #fbbf2433; }
+    .game-card.ua .game-status { color: #60a5fa; background: #60a5fa18; border: 1px solid #60a5fa33; }
+    .game-status .dot-sm { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: pulse 1.5s ease-in-out infinite; }
+
+    /* ── HOW IT WORKS ──────────────────────────────────────────────────── */
+    .how-section {
+      padding: 96px 0;
+      background: linear-gradient(180deg, transparent 0%, var(--deep) 30%, var(--deep) 70%, transparent 100%);
+    }
+    .how-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+      margin-top: 56px; position: relative;
+    }
+    /* Connecting line */
+    .how-grid::before {
+      content: ''; position: absolute;
+      top: 48px; left: calc(12.5% + 28px); right: calc(12.5% + 28px);
+      height: 1px; background: linear-gradient(90deg, transparent, var(--purple-dim), var(--purple-dim), var(--purple-dim), transparent);
+      z-index: 0;
+    }
+    .how-step {
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center; padding: 0 20px; position: relative; z-index: 1;
+    }
+    .how-step-num {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--card); border: 1px solid var(--purple-dim);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 900; color: var(--purple-lt);
+      margin-bottom: 20px; position: relative;
+    }
+    .how-step-num::after {
+      content: ''; position: absolute; inset: -4px;
+      border-radius: 50%; border: 1px solid var(--purple);
+      opacity: 0; transition: opacity .3s;
+    }
+    .how-step:hover .how-step-num::after { opacity: 1; }
+    .how-step-title { font-size: 15px; font-weight: 800; color: var(--white); margin-bottom: 8px; }
+    .how-step-desc  { font-size: 13px; color: var(--slate); line-height: 1.6; }
+
+    /* ── STATS BAND ────────────────────────────────────────────────────── */
+    .stats-band {
+      padding: 56px 0;
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    }
+    .stat-item {
+      text-align: center; padding: 0 24px;
+      border-right: 1px solid var(--border);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-num {
+      font-size: clamp(28px, 4vw, 44px); font-weight: 900;
+      background: linear-gradient(135deg, var(--gold-br), var(--purple-lt));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; line-height: 1.1; margin-bottom: 6px;
+    }
+    .stat-label { font-size: 12px; color: var(--slate); font-weight: 600; letter-spacing: .04em; }
+
+    /* ── BOTTOM CTA ────────────────────────────────────────────────────── */
+    .cta-section {
+      padding: 120px 0;
+      text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .cta-section::before {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 700px; height: 500px;
+      background: radial-gradient(ellipse, #7c3aed12 0%, transparent 65%);
+      pointer-events: none;
+    }
+    .cta-section .section-title { margin-bottom: 20px; }
+    .cta-section .section-sub   { margin: 0 auto 48px; }
+    .cta-cards {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+    .cta-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 20px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; font-weight: 600; color: var(--slate);
+    }
+    .cta-card .chip {
+      font-size: 10px; font-weight: 800; letter-spacing: .06em;
+      padding: 2px 7px; border-radius: 4px;
+    }
+    .cta-card.free  .chip { color: #22c55e; background: #14532d33; border: 1px solid #16a34a55; }
+    .cta-card.early .chip { color: var(--gold-br); background: #1c0e0233; border: 1px solid #d9770655; }
+    .cta-card.api   .chip { color: var(--purple-lt); background: #1a0a3a33; border: 1px solid #7c3aed55; }
+
+    /* ── FOOTER ────────────────────────────────────────────────────────── */
+    footer {
+      padding: 32px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--deep);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .footer-logo { font-size: 16px; font-weight: 900; }
+    .footer-logo .pulse-word { color: var(--gold-br); }
+    .footer-links {
+      display: flex; gap: 24px;
+    }
+    .footer-links a {
+      font-size: 12px; color: #475569; text-decoration: none;
+      transition: color .2s;
+    }
+    .footer-links a:hover { color: var(--slate); }
+    .footer-copy { font-size: 11px; color: #334155; width: 100%; text-align: center; }
+
+    /* ── FLOATING PARTICLES ────────────────────────────────────────────── */
+    .particles { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .particle {
+      position: absolute; border-radius: 50%;
+      animation: floatUp linear infinite;
+    }
+
+    /* ── RESPONSIVE ────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .games-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+      .how-grid   { grid-template-columns: repeat(2, 1fr); gap: 40px; }
+      .how-grid::before { display: none; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-item  { padding: 24px; border-right: none; border-bottom: 1px solid var(--border); }
+      .stat-item:nth-child(2n) { border-right: none; }
+      .features-strip .container { grid-template-columns: 1fr; }
+      .feature-item { border-right: none; border-bottom: 1px solid var(--border); }
+      .feature-item:last-child { border-bottom: none; }
+    }
+    @media (max-width: 600px) {
+      .hero-title { letter-spacing: -1px; }
+      .countdown-unit { min-width: 64px; padding: 12px 14px; }
+      .countdown-num { font-size: 28px; }
+      .signup-form { flex-direction: column; }
+      .signup-input  { border-right: 1px solid var(--border); border-radius: 12px; }
+      .signup-btn    { border-radius: 12px; }
+      .how-grid   { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .cta-cards  { flex-direction: column; align-items: center; }
+      nav         { padding: 14px 16px; }
+      .nav-badge  { display: none; }
+      footer      { flex-direction: column; align-items: center; text-align: center; }
+      .footer-links { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Floating particles ──────────────────────────────────────────────── -->
+<div class="particles" id="particles"></div>
+
+<!-- ── Canvas stars ───────────────────────────────────────────────────── -->
+<canvas id="stars"></canvas>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     NAV
+══════════════════════════════════════════════════════════════════════ -->
+<nav>
+  <div class="nav-logo">
+    <div class="nav-logo-icon">⚡</div>
+    <div>
+      <span class="tcg-word">TCG</span><span class="pulse-word">Pulse</span>
+    </div>
+  </div>
+  <div class="nav-badge">COMING SOON</div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     HERO
+══════════════════════════════════════════════════════════════════════ -->
+<section class="hero">
+  <div class="container" style="position:relative;z-index:1;">
+
+    <div class="hero-eyebrow fade-up">
+      <span class="dot"></span>
+      Early Access Opening Soon
+    </div>
+
+    <h1 class="hero-title">
+      <span class="line1 fade-up-2">Real-Time TCG</span>
+      <span class="line2 fade-up-3">Market Intelligence</span>
+    </h1>
+
+    <p class="hero-sub fade-up-4">
+      Live pricing, PSA slab data, and market analytics for
+      <strong>One Piece</strong>, <strong>Dragon Ball</strong>, and
+      <strong>Union Arena</strong> — all in one dashboard built for serious collectors.
+    </p>
+
+    <!-- Countdown -->
+    <div class="countdown-wrap fade-up-5" id="countdown">
+      <div class="countdown-unit"><span class="countdown-num" id="cd-days">--</span><span class="countdown-lbl">Days</span></div>
+      <div class="countdown-sep">:</div>
+      <div class="countdown-unit"><span class="countdown-num" id="cd-hours">--</span><span class="countdown-lbl">Hours</span></div>
+      <div class="countdown-sep">:</div>
+      <div class="countdown-unit"><span class="countdown-num" id="cd-min">--</span><span class="countdown-lbl">Minutes</span></div>
+      <div class="countdown-sep">:</div>
+      <div class="countdown-unit"><span class="countdown-num" id="cd-sec">--</span><span class="countdown-lbl">Seconds</span></div>
+    </div>
+
+    <!-- Email signup -->
+    <div class="fade-up-5">
+      <form class="signup-form" id="signup-form" onsubmit="handleSignup(event)">
+        <input type="email" class="signup-input" id="email-input"
+               placeholder="Enter your email for early access"
+               required autocomplete="email" />
+        <button type="submit" class="signup-btn">Notify Me →</button>
+      </form>
+      <div class="signup-success" id="signup-success">
+        ✓ &nbsp; You're on the list! We'll notify you at launch.
+      </div>
+      <p class="signup-note">No spam. Unsubscribe any time. Early access is free.</p>
+    </div>
+
+  </div>
+  <div class="scroll-hint">
+    <span>SCROLL</span>
+    <div class="scroll-arrow"></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     FEATURES STRIP
+══════════════════════════════════════════════════════════════════════ -->
+<div class="features-strip">
+  <div class="container">
+    <div class="feature-item fade-up">
+      <div class="feature-icon">📡</div>
+      <div class="feature-title">Live Price Feeds</div>
+      <div class="feature-desc">TCGPlayer & eBay data updated in real-time — NM floors, last sold, and trending spreads.</div>
+    </div>
+    <div class="feature-item fade-up-2">
+      <div class="feature-icon">🏆</div>
+      <div class="feature-title">PSA 10 Slab Data</div>
+      <div class="feature-desc">Graded market averages from verified eBay completed listings. No manual research needed.</div>
+    </div>
+    <div class="feature-item fade-up-3">
+      <div class="feature-icon">🔬</div>
+      <div class="feature-title">Integrity Engine</div>
+      <div class="feature-desc">Data guards flag price anomalies, rarity mismatches, and stale seeds before they mislead.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     GAMES SECTION
+══════════════════════════════════════════════════════════════════════ -->
+<section class="games-section">
+  <div class="container">
+    <div class="games-header">
+      <span class="section-eyebrow fade-up">Supported Games</span>
+      <h2 class="section-title fade-up-2">Three Universes.<br>One Dashboard.</h2>
+      <p class="section-sub fade-up-3" style="margin:0 auto;">
+        Deep-set coverage across the biggest TCGs in the market right now — with more games coming as we expand.
+      </p>
+    </div>
+
+    <div class="games-grid">
+
+      <!-- One Piece -->
+      <div class="game-card op fade-up">
+        <div class="orb"></div>
+        <div class="game-logo-wrap">⚓</div>
+        <div class="game-name">One Piece TCG</div>
+        <div class="game-sub">BANDAI · OP-01 ROMANCE DAWN & BEYOND</div>
+        <div class="game-desc">
+          The fastest-growing TCG market in the world. Manga Rares, Secret Rares, and Alt Arts demand real-time intelligence — not day-old estimates.
+        </div>
+        <ul class="game-features">
+          <li>Full Romance Dawn set — all 121 cards + variants</li>
+          <li>Manga Rare & Special Rare slab tracking</li>
+          <li>TCGPlayer ID verification per card</li>
+          <li>PSA 10 eBay sold comps with live fetch</li>
+        </ul>
+        <div class="game-status"><span class="dot-sm"></span>Active Development</div>
+      </div>
+
+      <!-- Dragon Ball -->
+      <div class="game-card db fade-up-2">
+        <div class="orb"></div>
+        <div class="game-logo-wrap">🐉</div>
+        <div class="game-name">Dragon Ball Super</div>
+        <div class="game-sub">BANDAI · FUSION WORLD & BEYOND</div>
+        <div class="game-desc">
+          Dragon Ball Super TCG has seen explosive growth. SCR Special Rares and Leader foils are highly volatile — track them with precision.
+        </div>
+        <ul class="game-features">
+          <li>Fusion World set coverage</li>
+          <li>Special Rare & SCR price tracking</li>
+          <li>Leader parallel market data</li>
+          <li>Condition-adjusted pricing</li>
+        </ul>
+        <div class="game-status"><span class="dot-sm"></span>Coming Soon</div>
+      </div>
+
+      <!-- Union Arena -->
+      <div class="game-card ua fade-up-3">
+        <div class="orb"></div>
+        <div class="game-logo-wrap">⚔️</div>
+        <div class="game-name">Union Arena</div>
+        <div class="game-sub">BANDAI · MULTI-IP TCG</div>
+        <div class="game-desc">
+          Naruto, Bleach, Hunter × Hunter — Union Arena spans multiple beloved IPs with a rapidly expanding playerbase and undertracked secondary market.
+        </div>
+        <ul class="game-features">
+          <li>Multi-IP set tracking</li>
+          <li>BP card rarity tiers</li>
+          <li>eBay completed listing analysis</li>
+          <li>Cross-IP portfolio view</li>
+        </ul>
+        <div class="game-status"><span class="dot-sm"></span>Coming Soon</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     HOW IT WORKS
+══════════════════════════════════════════════════════════════════════ -->
+<section class="how-section">
+  <div class="container">
+    <div style="text-align:center; margin-bottom:0;">
+      <span class="section-eyebrow fade-up">How It Works</span>
+      <h2 class="section-title fade-up-2">Market data, decoded.</h2>
+    </div>
+    <div class="how-grid">
+      <div class="how-step fade-up">
+        <div class="how-step-num">1</div>
+        <div class="how-step-title">Connect APIs</div>
+        <div class="how-step-desc">Add your TCGPlayer bearer token and eBay App ID — no account login required.</div>
+      </div>
+      <div class="how-step fade-up-2">
+        <div class="how-step-num">2</div>
+        <div class="how-step-title">Import Set</div>
+        <div class="how-step-desc">Auto-populate entire sets with one click using the Catalog Import engine.</div>
+      </div>
+      <div class="how-step fade-up-3">
+        <div class="how-step-num">3</div>
+        <div class="how-step-title">Live Prices</div>
+        <div class="how-step-desc">Every card open shows real-time NM floors, PSA 10 slab data, and eBay solds.</div>
+      </div>
+      <div class="how-step fade-up-4">
+        <div class="how-step-num">4</div>
+        <div class="how-step-title">Trade Smart</div>
+        <div class="how-step-desc">See spreads, condition adjustments, and payout calculations before you sell.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     STATS
+══════════════════════════════════════════════════════════════════════ -->
+<div class="stats-band">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item fade-up">
+        <div class="stat-num">121+</div>
+        <div class="stat-label">Cards Tracked (OP-01)</div>
+      </div>
+      <div class="stat-item fade-up-2">
+        <div class="stat-num">3</div>
+        <div class="stat-label">Live Market Sources</div>
+      </div>
+      <div class="stat-item fade-up-3">
+        <div class="stat-num">Real-Time</div>
+        <div class="stat-label">NM Price Updates</div>
+      </div>
+      <div class="stat-item fade-up-4">
+        <div class="stat-num">PSA 10</div>
+        <div class="stat-label">Slab Data via eBay</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     BOTTOM CTA
+══════════════════════════════════════════════════════════════════════ -->
+<section class="cta-section">
+  <div class="container">
+    <span class="section-eyebrow fade-up">Get Early Access</span>
+    <h2 class="section-title fade-up-2">Be first through the gates.</h2>
+    <p class="section-sub fade-up-3">
+      Join the waitlist and get early access when TCGPulse launches — free for founding users, no credit card required.
+    </p>
+
+    <div class="cta-cards fade-up-4">
+      <div class="cta-card free">
+        <span class="chip">FREE</span>
+        Full dashboard access at launch
+      </div>
+      <div class="cta-card early">
+        <span class="chip">EARLY</span>
+        Founding user badge + priority support
+      </div>
+      <div class="cta-card api">
+        <span class="chip">API</span>
+        Live TCGPlayer + eBay integrations
+      </div>
+    </div>
+
+    <div class="fade-up-5">
+      <form class="signup-form" id="signup-form-2" onsubmit="handleSignup2(event)" style="max-width:480px;">
+        <input type="email" class="signup-input" id="email-input-2"
+               placeholder="your@email.com" required autocomplete="email" />
+        <button type="submit" class="signup-btn">Join Waitlist →</button>
+      </form>
+      <div class="signup-success" id="signup-success-2">
+        ✓ &nbsp; You're on the list! We'll notify you at launch.
+      </div>
+      <p class="signup-note">Early access is free. No spam. Unsubscribe any time.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════════════════ -->
+<footer>
+  <div class="footer-logo">
+    TCG<span class="pulse-word">Pulse</span>
+  </div>
+  <div class="footer-links">
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+    <a href="#">Contact</a>
+  </div>
+  <div class="footer-copy">
+    © 2026 TCGPulse · Real-Time TCG Market Intelligence · One Piece · Dragon Ball · Union Arena
+  </div>
+</footer>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════════════════ -->
+<script>
+/* ── Star field canvas ─────────────────────────────────────────────── */
+(function() {
+  const canvas = document.getElementById('stars');
+  const ctx = canvas.getContext('2d');
+  let W, H, stars = [];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function initStars() {
+    stars = [];
+    const count = Math.floor((W * H) / 5000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 1.4 + 0.2,
+        a: Math.random(),
+        speed: Math.random() * 0.003 + 0.001,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    stars.forEach(s => {
+      const alpha = s.a * (0.5 + 0.5 * Math.sin(t * s.speed + s.phase));
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200,190,255,${alpha})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', () => { resize(); initStars(); });
+  resize(); initStars(); requestAnimationFrame(draw);
+})();
+
+/* ── Floating particles ────────────────────────────────────────────── */
+(function() {
+  const wrap = document.getElementById('particles');
+  const colors = ['#7c3aed', '#d97706', '#a855f7', '#f59e0b', '#3b82f6'];
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = Math.random() * 4 + 1;
+    const left = Math.random() * 100;
+    const dur  = Math.random() * 20 + 15;
+    const del  = Math.random() * -20;
+    const col  = colors[Math.floor(Math.random() * colors.length)];
+    p.style.cssText = `
+      width:${size}px; height:${size}px;
+      left:${left}%;
+      bottom:-10px;
+      background:${col};
+      opacity:0;
+      animation-duration:${dur}s;
+      animation-delay:${del}s;
+    `;
+    wrap.appendChild(p);
+  }
+})();
+
+/* ── Countdown timer ───────────────────────────────────────────────── */
+(function() {
+  // Launch date: 30 days from today
+  const launch = new Date();
+  launch.setDate(launch.getDate() + 30);
+  launch.setHours(0, 0, 0, 0);
+
+  const dEl = document.getElementById('cd-days');
+  const hEl = document.getElementById('cd-hours');
+  const mEl = document.getElementById('cd-min');
+  const sEl = document.getElementById('cd-sec');
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function tick() {
+    const now  = Date.now();
+    const diff = Math.max(0, launch - now);
+    const days  = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const mins  = Math.floor((diff % 3600000) / 60000);
+    const secs  = Math.floor((diff % 60000) / 1000);
+
+    const prevS = sEl.textContent;
+    dEl.textContent = pad(days);
+    hEl.textContent = pad(hours);
+    mEl.textContent = pad(mins);
+    if (sEl.textContent !== pad(secs)) {
+      sEl.textContent = pad(secs);
+      sEl.style.animation = 'none';
+      sEl.offsetHeight; // reflow
+      sEl.style.animation = 'countDown .3s ease both';
+    }
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
+/* ── Intersection observer for fade-up ─────────────────────────────── */
+(function() {
+  const els = document.querySelectorAll('.fade-up, .fade-up-2, .fade-up-3, .fade-up-4, .fade-up-5');
+  // Only animate elements not in the hero (hero always shown)
+  const heroEls = document.querySelector('.hero').querySelectorAll('*');
+  const heroSet = new Set(heroEls);
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting && !heroSet.has(e.target)) {
+        e.target.style.opacity = '1';
+        e.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, { threshold: 0.15 });
+
+  els.forEach(el => {
+    if (!heroSet.has(el)) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(24px)';
+      el.style.transition = 'opacity .7s ease, transform .7s cubic-bezier(.22,1,.36,1)';
+      obs.observe(el);
+    }
+  });
+})();
+
+/* ── Email signup ───────────────────────────────────────────────────── */
+function handleSignup(e) {
+  e.preventDefault();
+  const email = document.getElementById('email-input').value;
+  if (!email) return;
+  document.getElementById('signup-form').style.display = 'none';
+  const s = document.getElementById('signup-success');
+  s.style.display = 'flex';
+  // In production: POST email to your backend here
+  console.log('[TCGPulse] Waitlist signup:', email);
+}
+function handleSignup2(e) {
+  e.preventDefault();
+  const email = document.getElementById('email-input-2').value;
+  if (!email) return;
+  document.getElementById('signup-form-2').style.display = 'none';
+  const s = document.getElementById('signup-success-2');
+  s.style.display = 'flex';
+  console.log('[TCGPulse] Waitlist signup:', email);
+}
+
+/* ── Parallax hero glow on mouse move ──────────────────────────────── */
+document.addEventListener('mousemove', (e) => {
+  const x = (e.clientX / window.innerWidth  - 0.5) * 30;
+  const y = (e.clientY / window.innerHeight - 0.5) * 30;
+  const hero = document.querySelector('.hero::before');
+  // Apply via a CSS variable on the element instead
+  document.documentElement.style.setProperty('--mx', `${50 + x * 0.4}%`);
+  document.documentElement.style.setProperty('--my', `${50 + y * 0.4}%`);
+});
+</script>
+</body>
+</html>
